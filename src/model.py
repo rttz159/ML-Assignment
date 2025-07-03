@@ -1,19 +1,23 @@
 import numpy as np
 
-
 class GlucoseDynamicsSimulator:
     """
     Meals are represented by Rameal(t), the rate of glucose appearance from the gut
     Exercise is represented by E_t, e.g. 0 to 1
     Meal and exercise events are represented by boolean flags
-    Inputs: Rameal_current, E_current, meal_event_occurred, exercise_event_occurred
+    Inputs: 
+        Rameal_current, E_current, meal_event_occurred, exercise_event_occurred
     State variables:
-    G: glucose concentration in the central compartment [mg/dL]
-    H: glucose concentration in the skeletal muscle [mg/dL]
-    S: interstitial insulin concentration in skeletal muscle [uU/ml]
-    M: liver glucose consumption state [unitless]
-    L: exercise-action intensity [unitless]
-    I_plasma: Plasma insulin concentration [uU/ml]
+        G: glucose concentration in the central compartment [mg/dL]
+        H: glucose concentration in the skeletal muscle [mg/dL]
+        S: interstitial insulin concentration in skeletal muscle [uU/ml]
+        M: liver glucose consumption state [unitless]
+        L: exercise-action intensity [unitless]
+        I_plasma: Plasma insulin concentration [uU/ml]
+    Parameterized variables:
+        weight [kg]
+        Gb: basal glucose concentration [mg/dL]
+        Ib: basal insulin concentration [mU/L]
     """
 
     def __init__(self, weight=70, Gb=90, Ib=15):
