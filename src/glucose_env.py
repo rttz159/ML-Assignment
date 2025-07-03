@@ -224,9 +224,9 @@ class CustomGlucoseDynamicsEnv(gym.Env):
         # can be also calculated by scaling the penalty using the distance between glucose level and target glucose
         reward = 0.0
 
-        # acction penalty
+        # action penalty
         if action['meal_category'] != 0 and action["exercise_mode"] != 0:
-            reward += -1
+            reward += -30
 
         # state-dependent glucose reward or panalty
         glucose_level = obs[0] # plasma glucose concentration
