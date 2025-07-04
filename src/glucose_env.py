@@ -20,7 +20,7 @@ class CustomGlucoseDynamicsEnv(gym.Env):
             "meal_category": spaces.Discrete(4),   # 0=no_meal, 1=light, 2=medium, 3=heavy
             "exercise_mode": spaces.Discrete(2),  # 0 = inactive, 1 = start/continue exercise
             "exercise_intensity": spaces.Discrete(4),  # 0 = rest, 1 = light, 2 = moderate, 3 = intense
-            "exercise_duration": spaces.Discrete(13), # e.g., 0–60 min in 5-min steps
+            "exercise_duration": spaces.Discrete(13), # 0–60 min in 5-min steps
         })
 
         '''
