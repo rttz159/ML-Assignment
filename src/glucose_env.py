@@ -16,12 +16,15 @@ class CustomGlucoseDynamicsEnv(gym.Env):
             dtype=np.float32
         )
 
-        self.action_space = spaces.Dict({
-            "meal_category": spaces.Discrete(4),   # 0=no_meal, 1=light, 2=medium, 3=heavy
-            "exercise_mode": spaces.Discrete(2),  # 0 = inactive, 1 = start/continue exercise
-            "exercise_intensity": spaces.Discrete(4),  # 0 = rest, 1 = light, 2 = moderate, 3 = intense
-            "exercise_duration": spaces.Discrete(13), # 0–60 min in 5-min steps
-        })
+        '''
+            self.action_space = spaces.Dict({
+                "meal_category": spaces.Discrete(4),   # 0=no_meal, 1=light, 2=medium, 3=heavy
+                "exercise_mode": spaces.Discrete(2),  # 0 = inactive, 1 = start/continue exercise
+                "exercise_intensity": spaces.Discrete(4),  # 0 = rest, 1 = light, 2 = moderate, 3 = intense
+                "exercise_duration": spaces.Discrete(13), # 0–60 min in 5-min steps
+            })
+        '''
+        self.action_space = spaces.MultiDiscrete([4, 2, 4, 13]) # flattened version
 
         '''
             weight and glucose range from https://www.moh.gov.my/moh/resources/Penerbitan/CPG/Endocrine/3b.pdf
@@ -43,9 +46,13 @@ class CustomGlucoseDynamicsEnv(gym.Env):
             "remaining_steps": 0,
             "intensity": 0.0
         }
+
+        self.transition_log = []
     
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
+
+        self.previous_observation = None
         
         weight = np.random.uniform(*self.weight_range)
         Gb = np.random.uniform(*self.Gb_range)
@@ -87,6 +94,8 @@ class CustomGlucoseDynamicsEnv(gym.Env):
             self.time_since_midnight
         ], dtype=np.float32)
 
+        self.previous_observation = observed_state.copy()
+
         return observed_state, {}
     
     def build_observation(self):
@@ -117,7 +126,10 @@ class CustomGlucoseDynamicsEnv(gym.Env):
         return temp_state
     
     def step(self, action):
-        meal_category = action['meal_category']
+        meal_category = action[0]
+        exercise_mode = action[1]
+        exercise_intensity = action[2]
+        exercise_duration = action[3]
         Rameal_current = self.map_meal_category_to_glucose_rate(meal_category)
 
         #random meal (increase environment instability)
@@ -129,11 +141,11 @@ class CustomGlucoseDynamicsEnv(gym.Env):
         else:
             meal_event_occurred = meal_category > 0
 
-        if action["exercise_mode"] == 1:
+        if exercise_mode == 1:
             if not self.current_exercise_session["active"]:
                 self.current_exercise_session["active"] = True
-                self.current_exercise_session["remaining_steps"] = action["exercise_duration"]
-                self.current_exercise_session["intensity"] = self.map_exercise_level_to_intensity(action["exercise_intensity"])
+                self.current_exercise_session["remaining_steps"] = exercise_duration
+                self.current_exercise_session["intensity"] = self.map_exercise_level_to_intensity(exercise_intensity)
         else:
             self.current_exercise_session["active"] = False
             self.current_exercise_session["remaining_steps"] = 0
@@ -153,7 +165,7 @@ class CustomGlucoseDynamicsEnv(gym.Env):
             E_current += random_exercise_intensity
             exercise_event_occurred = True
         else:
-            exercise_event_occurred = action["exercise_mode"] == 1
+            exercise_event_occurred = exercise_mode == 1
 
         ode_func = lambda t, y: self.simulator.odes(
             y,
@@ -179,6 +191,16 @@ class CustomGlucoseDynamicsEnv(gym.Env):
         truncated = obs[-1] >= 1440
 
         self.previous_glucose_level = obs[0]
+
+        # log transition
+        self.transition_log.append({
+            "state": self.previous_observation.copy(),
+            "action": action.copy() if isinstance(action, dict) else np.array(action),
+            "reward": reward,
+            "next_state": obs.copy(),
+            "done": terminated or truncated
+        })
+        self.previous_observation = obs.copy()
 
         return obs, reward, terminated, truncated, {}
 
@@ -221,16 +243,27 @@ class CustomGlucoseDynamicsEnv(gym.Env):
         return glucose_reading + noise
 
     def compute_reward(self, action, obs):
+        meal_category = action[0]
+        exercise_mode = action[1]
+
         # can be also calculated by scaling the penalty using the distance between glucose level and target glucose
         reward = 0.0
 
+        # penalty for taking meal outside the meal windows
+        time_since_last_meal = obs[3] # From the state vector
+        is_breakfast_window = obs[4]
+        is_lunch_window = obs[5]
+        is_dinner_window = obs[6]
+
+        if meal_category != 0 and (not(is_breakfast_window) or not(is_lunch_window) or not(is_dinner_window)):
+            reward += -50
+
         # action penalty
-        if action['meal_category'] != 0 and action["exercise_mode"] != 0:
+        if meal_category != 0 and exercise_mode != 0:
             reward += -30
 
         # state-dependent glucose reward or panalty
         glucose_level = obs[0] # plasma glucose concentration
-        time_since_last_meal = obs[3] # From the state vector
 
         if time_since_last_meal > 8 * 60:
             if 70 <= glucose_level <= 100:
@@ -263,7 +296,7 @@ class CustomGlucoseDynamicsEnv(gym.Env):
                 reward += -100.0
 
         # penalty for high variability when agent choose no meals and no exercise
-        agent_inactive = action['meal_category'] == 0 and action["exercise_mode"] == 0
+        agent_inactive = meal_category == 0 and exercise_mode == 0
 
         if agent_inactive and (70 <= glucose_level <= 180):
             
